@@ -1,0 +1,73 @@
+---
+title: "C8Assgnment"
+author: "John Doe"
+date: "October 24, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(plyr)
+library(caret)
+library(ggplot2)
+library(klaR)
+```
+
+## Executive Summary  
+This document analyzes a training fitness dataset about how well certain exercises have been perfomed by 6 different subject. Several variables in the dataset has NA values so they were excluded from the modeling. Several models were built using this dataset and their accuracy compared to select the best fit. The select models were then used to predict the how well the exercise was performed using a test data set. 
+
+
+##Data Acquisition and Preparation
+```{r data_source}
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#download.file(trainUrl, "pml-training.csv")
+#download.file(testUrl, "pml-testing.csv")
+train_data <- read.csv("pml-training.csv", na.strings  = c("NA", "#DIV/0!", " "))
+```
+
+Several columns in the dataset have NA values. Columns which have 95% of the values as NA will be removed from the dataset.
+
+```{r data_prep}
+num_obs <- nrow(train_data)
+na_cols <- sapply(train_data, function(x){if (sum(is.na(x))/num_obs > 0.95) TRUE else FALSE})
+na_cols <- as.vector(na_cols)
+train_data_cln <- train_data[, !na_cols]
+train_data_cln <- train_data_cln[train_data_cln$user_name == "carlitos", ]
+train_data_cln <- train_data_cln[, -c(1:6)]
+colnames(train_data_cln)
+```
+
+##Data Modeling
+
+We shall try 3 different models - Random Forest, Boosting, Navie Bayes. Also since there are over 50 features in the data set, we shall leverage principal component analysis to reduce dimensionality. We shall also use k-fold cross validation with 3 folds.
+
+```{r build_models, message = FALSE}
+tC = trainControl(method="cv", number = 3)
+suppressMessages(model_rf <- train(classe ~ ., data = train_data_cln, method = "rf", preProcess = "pca", trControl = tC ))
+suppressMessages(model_gbm <- train(classe ~ ., data = train_data_cln, method = "gbm", preProcess = "pca", trControl = tC ))
+suppressMessages(model_nb <- train(classe ~ ., data = train_data_cln, method = "nb", preProcess = "pca", trControl = tC))
+```
+
+##Model Accuracy Analysis
+
+Now that we have used different models, lets select a champion model, the one that bas best accuracy
+
+```{r determine_models_Accuracy}
+v_Accuracy <- c(Random_Forest = max(model_rf$results$Accuracy), Boosting = max(model_gbm$results$Accuracy))
+v_Accuracy <- c(v_Accuracy, Naive_Bayes = max(model_nb$results$Accuracy))
+v_Accuracy
+```
+
+As can be seen from the results, Random Forect model yielded the best accuracy. Hence we shall use it for predicting the test set. Since the Random Forect Accuracy is `r max(model_rf$results$Accuracy)` the out of sample error is expected to be less than that.
+
+```{r test_data_prep}
+test_data <- read.csv("pml-testing.csv", na.strings  = c("NA", "#DIV/0!", " "))
+test_data_cln <- test_data[, !na_cols]
+test_data_cln <- test_data_cln[, -c(1:6)]
+colnames(test_data_cln)
+predict_test = predict(model_rf, test_data_cln)
+predict_test
+Predictions <- cbind(counter = c(1:20), classe = predict_test)
+Predictions
+```
